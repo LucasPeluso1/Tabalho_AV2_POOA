@@ -32,8 +32,8 @@ public class Payment {
     @Column(nullable = false)
     private Integer installments; // 1..12
 
-    // Mantido como Double por simplicidade no simulador
-    private Double monthlyInterest; // 1.0 (=1%/mês)
+    
+    private Double monthlyInterest; 
 
     @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal totalWithInterest;
