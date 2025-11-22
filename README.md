@@ -1,36 +1,64 @@
-# FiadoPay Simulator (Spring Boot + H2)
+Desenvolvido por: 
+- ANTONIO PARIS MORAIS JUNIOR
+- AQUILES SANTOS DE ARAUJO
+- BRUNO HENRIQUE RAMOS SEIXAS
+- GABRIEL ALMEIDA DA CRUZ
+- HUGO RODRIGO SILVA SANTOS
+- LUCAS NASCIMENTO ANGELO PELUSO
+# 💸 FiadoPay Simulator - Gateway de Pagamento
 
-Gateway de pagamento **FiadoPay** para a AVI/POOA.
-Substitui PSPs reais com um backend em memória (H2).
+> **Stack:** Java 21, Spring Boot 3.2, H2 Database, Maven.
 
-## Rodar
+O **FiadoPay** é um simulador robusto de um Gateway de Pagamento (PSP).
+---
+
+🏗️ Arquitetura e Decisões de Engenharia
+
+O sistema foi desenhado para desacoplar a recepção da requisição do seu processamento efetivo, garantindo alta disponibilidade e simulando um ambiente real.
+
+### 1. Processamento Assíncrono e Threads
+Em vez de bloquear a thread principal do servidor HTTP enquanto "conversa com o banco" (simulado), adotamos uma abordagem não-bloqueante:
+* **Fluxo:** A API retorna `201 Created` com status `PENDING` imediatamente.
+* **Bastidores:** Um `ExecutorService` (pool de threads dedicado) assume o trabalho pesado: cálculo de juros complexos, regras de aprovação e comunicação externa.
+* **Benefício:** A API permanece responsiva mesmo sob alta carga ou latência bancária simulada.
+
+### 2. Metaprogramação e Reflexão
+Utilizamos a API de Reflexão do Java para criar um sistema dinâmico de descoberta de regras de negócio.
+* **Annotation Inspector:** Ao iniciar, o serviço `AnnotationInspectorService` varre o Contexto do Spring em busca de métodos anotados, configurando regras sem necessidade de arquivos XML ou configurações estáticas.
+* **JAR Safe:** O scanner foi implementado utilizando `ApplicationContext` e `AopUtils`, garantindo que a descoberta de classes funcione tanto na IDE quanto quando a aplicação é empacotada em `.jar`.
+
+### 3. Webhooks Seguros (HMAC)
+Para notificar as lojas sobre atualizações de pagamento (`APPROVED`/`DECLINED`), implementamos um sistema de Webhooks passivo-ativo.
+* **Segurança:** Todo payload enviado é assinado digitalmente com **HMAC-SHA256**.
+* **Validação:** O lojista recebe um header `X-Signature` e deve validá-lo para garantir a integridade e autenticidade da mensagem, evitando ataques de spoofing.
+
+---
+
+## 🧩 Anotações Personalizadas
+
+O projeto introduz anotações que alteram ou marcam o comportamento do sistema em tempo de execução:
+
+| Anotação | Alvo | Descrição | Metadados |
+| :--- | :--- | :--- | :--- |
+| `@PaymentMethod` | Método | Classifica o tipo de pagamento suportado pelo handler. | `type` (ex: "CARD") |
+| `@AntiFraud` | Método | Vincula regras de risco ao processamento do método. | `name`, `threshold` (limite de valor) |
+| `@WebhookSink` | Método | Marca métodos que atuam como pontos de saída de eventos. | *Nenhum* |
+
+---
+
+## 🚀 Como Rodar o Projeto
+
+### Pré-requisitos
+* **Java 21** instalado e configurado.
+* Porta **8080** livre.
+
+### Execução
+No terminal, na raiz do projeto:
+
 ```bash
-./mvnw spring-boot:run
-# ou
-mvn spring-boot:run
-```
+# Linux / Mac / Git Bash
+./mvnw clean spring-boot:run
 
-H2 console: http://localhost:8080/h2  
-Swagger UI: http://localhost:8080/swagger-ui.html
+# Windows (CMD)
+mvnw clean spring-boot:run
 
-## Fluxo
-
-1) **Cadastrar merchant**
-```bash
-curl -X POST http://localhost:8080/fiadopay/admin/merchants   -H "Content-Type: application/json"   -d '{"name":"MinhaLoja ADS","webhookUrl":"http://localhost:8081/webhooks/payments"}'
-```
-
-2) **Obter token**
-```bash
-curl -X POST http://localhost:8080/fiadopay/auth/token   -H "Content-Type: application/json"   -d '{"client_id":"<clientId>","client_secret":"<clientSecret>"}'
-```
-
-3) **Criar pagamento**
-```bash
-curl -X POST http://localhost:8080/fiadopay/gateway/payments   -H "Authorization: Bearer FAKE-<merchantId>"   -H "Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000"   -H "Content-Type: application/json"   -d '{"method":"CARD","currency":"BRL","amount":250.50,"installments":12,"metadataOrderId":"ORD-123"}'
-```
-
-4) **Consultar pagamento**
-```bash
-curl http://localhost:8080/fiadopay/gateway/payments/<paymentId>
-```
